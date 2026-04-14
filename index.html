@@ -185,6 +185,8 @@ html{scrollbar-width:thin;scrollbar-color:var(--scr) transparent}
 .preset-pill:active{opacity:.75}
 .preset-pill-name{font-size:13px;font-weight:600;color:var(--text)}
 .preset-pill-sub{font-size:11px;color:var(--text2);margin-top:2px}
+input::placeholder{color:var(--text3);opacity:1}
+input:not(:placeholder-shown){color:var(--text)}
 /* ── MISC ────────────────────────────────────────────── */
 .empty{text-align:center;padding:32px 16px;color:var(--text2);font-size:13px}
 .divider{border:none;border-top:0.5px solid var(--border);margin:12px 0}
@@ -598,19 +600,21 @@ function renderCapitalCard() {
   `;
 }
 
-function saveCapital() {
-  const caps = state.settings.capital;
-  caps.forEach(c=>{
-    const inp = document.getElementById('cap-'+c.id);
-    if(inp) c.amount = parseFloat(inp.value)||0;
-    const tog = document.getElementById('cap-en-'+c.id);
-    if(tog) c.enabled = tog.checked;
-  });
-  const fxInp = document.getElementById('s-fx-sgdusd');
-  if(fxInp) state.settings.fxRates.USDSGD = parseFloat(fxInp.value)||1.34;
-  state.settings.marginPct = parseFloat(document.getElementById('s-margin-pct').value)||20;
-  save(); toast('Capital saved'); renderCapitalCard();
+function setCapEnabled(id, val) {
+  const cap = state.settings.capital.find(c => c.id === id);
+  if (cap) { cap.enabled = val; save(); renderCapitalCard(); }
 }
+function setCapAmount(id, val) {
+  const cap = state.settings.capital.find(c => c.id === id);
+  if (cap) { cap.amount = parseFloat(val) || 0; save(); renderCapitalCard(); }
+}
+function setCapFx(val) {
+  state.settings.fxRates.USDSGD = parseFloat(val) || 1.34; save(); renderCapitalCard();
+}
+function setCapMargin(val) {
+  state.settings.marginPct = parseFloat(val) || 20; save(); renderCapitalCard();
+}
+
 
 function renderCapitalInputs() {
   const caps = state.settings.capital;
@@ -1206,15 +1210,15 @@ function renderSettingsSub(id, el) {
       <div class="s-row" style="cursor:default">
         <div class="s-row-l"><div class="s-icon" style="background:rgba(239,159,39,0.12)"><svg viewBox="0 0 24 24" fill="none" stroke="#EF9F27" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg></div>
         <div><div class="s-rtitle">${cap.label}</div><div class="s-rsub">${cap.currency}</div></div></div>
-        <label class="toggle" onclick="event.stopPropagation()"><input type="checkbox" ${cap.enabled?'checked':''} onchange="cap.enabled=this.checked;save();renderCapitalCard()"><div class="toggle-track"></div><div class="toggle-thumb"></div></label>
+        <label class="toggle" onclick="event.stopPropagation()"><input type="checkbox" ${cap.enabled?'checked':''} onchange="setCapEnabled('${cap.id}',this.checked)"><div class="toggle-track"></div><div class="toggle-thumb"></div></label>
       </div>
-      <div style="padding:0 16px 14px"><div class="field" style="margin-bottom:0"><label>Balance (${cap.currency})</label>
-        <input type="number" value="${cap.amount||''}" placeholder="0" step="100" oninput="cap.amount=parseFloat(this.value)||0;save();renderCapitalCard()">
+      <div style="padding:8px 16px 14px"><div class="field" style="margin-bottom:0"><label>Balance (${cap.currency})</label>
+        <input type="number" id="cap-bal-${cap.id}" value="${cap.amount||''}" placeholder="0" step="100" oninput="setCapAmount('${cap.id}',this.value)">
       </div></div>
     </div>`).join('')}
     <div class="s-group"><div style="padding:14px 16px">
-      <div class="field"><label>USD / SGD exchange rate</label><input type="number" value="${fx}" step="0.001" oninput="state.settings.fxRates.USDSGD=parseFloat(this.value)||1.34;save();renderCapitalCard()"></div>
-      <div class="field" style="margin-bottom:4px"><label>CSP margin requirement (%)</label><input type="number" value="${mp}" step="1" min="1" max="100" oninput="state.settings.marginPct=parseFloat(this.value)||20;save();renderCapitalCard()"></div>
+      <div class="field"><label>USD / SGD exchange rate</label><input type="number" id="cap-fx" value="${fx}" step="0.001" oninput="setCapFx(this.value)"></div>
+      <div class="field" style="margin-bottom:4px"><label>CSP margin requirement (%)</label><input type="number" id="cap-margin" value="${mp}" step="1" min="1" max="100" oninput="setCapMargin(this.value)"></div>
       <div style="font-size:11px;color:var(--text2)">Tiger Brokers standard: 20%. Adjust for your account tier.</div>
     </div></div>`;
 
