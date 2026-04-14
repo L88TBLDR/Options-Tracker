@@ -411,14 +411,21 @@ function save() {
 }
 function load() {
   try {
-    const r = localStorage.getItem(SK);
+    // Migrate from previous storage key if needed
+    let r = localStorage.getItem(SK);
+    if (!r) {
+      const legacy = localStorage.getItem('ot_v5') || localStorage.getItem('ot_v4');
+      if (legacy) { localStorage.setItem(SK, legacy); r = legacy; }
+    }
     if (r) {
       const saved = JSON.parse(r);
       state.trades = saved.trades || SEED;
       state.nextId = saved.nextId || (Math.max(...(saved.trades||SEED).map(t=>t.id||0))+1);
       if (saved.settings) {
         state.settings = {...state.settings, ...saved.settings};
-        if (!state.settings.histCols) state.settings.histCols = state.settings.histCols;
+        // ensure new fees fields are present if upgrading from old settings
+        state.settings.fees = {...state.settings.fees, ...{preset:state.settings.fees?.preset||'tiger-ultra',gst:state.settings.fees?.gst!==false,gstRate:state.settings.fees?.gstRate||9}};
+        if (!state.settings.capital) state.settings.capital = state.settings.capital;
       }
     } else {
       state.trades = SEED;
