@@ -2,7 +2,7 @@
 <html lang="en" data-theme="dark">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="OT Tracker">
@@ -41,6 +41,11 @@ body{font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text',sans-serif;backg
 .header h1{font-size:17px;font-weight:700;letter-spacing:-.4px}
 .header-sub{font-size:11px;color:var(--text2);margin-top:1px}
 .header-badge{font-size:12px;font-weight:700;padding:4px 10px;border-radius:20px;background:rgba(93,202,165,0.15);color:var(--pos)}
+.header-pnl{display:flex;align-items:baseline;gap:10px;margin-top:8px;padding-top:8px;border-top:0.5px solid var(--border)}
+.header-pnl-main{font-size:22px;font-weight:700;line-height:1}
+.header-pnl-meta{display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+.header-pnl-net{font-size:12px;font-weight:600;color:var(--text2)}
+.header-pnl-fees{font-size:12px;font-weight:600;color:var(--neg)}
 /* ── NAV ─────────────────────────────────────────────── */
 .nav{position:fixed;bottom:0;left:0;right:0;background:var(--bg2);border-top:0.5px solid var(--border);display:flex;z-index:50;padding-bottom:var(--safe-bottom)}
 .nav-btn{flex:1;padding:9px 2px 7px;background:none;border:none;color:var(--text2);font-size:9px;font-weight:500;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px;letter-spacing:.01em}
@@ -89,6 +94,11 @@ input[readonly]{background:var(--bg3);color:var(--text2)}
 .trade-row:last-child{border-bottom:none}
 .trade-ticker{font-size:14px;font-weight:700}
 .trade-meta{font-size:11px;color:var(--text2);margin-top:2px;line-height:1.5}
+/* swipe-to-delete */
+.swipe-wrap{position:relative;overflow:hidden;border-bottom:0.5px solid var(--border)}
+.swipe-wrap:last-child{border-bottom:none}
+.swipe-delete-btn{position:absolute;right:0;top:0;bottom:0;width:72px;background:var(--neg);color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;cursor:pointer;transform:translateX(100%);transition:transform .2s;flex-shrink:0;border:none}
+.swipe-content{display:flex;justify-content:space-between;align-items:flex-start;padding:11px 0;transition:transform .2s;background:var(--card);position:relative;z-index:1;touch-action:pan-y}
 .trade-pnl{font-size:15px;font-weight:700}
 .trade-note{font-size:11px;color:var(--text3);font-style:italic;margin-top:2px}
 /* ── BADGES ──────────────────────────────────────────── */
@@ -105,7 +115,7 @@ input[readonly]{background:var(--bg3);color:var(--text2)}
 .b-sold{background:rgba(144,144,168,0.12);color:#9090a8}
 /* ── FILTER BAR ──────────────────────────────────────── */
 .filter-bar{display:flex;gap:8px;margin-bottom:12px;overflow-x:auto;padding-bottom:2px;-webkit-overflow-scrolling:touch}
-.filter-bar select{width:auto;font-size:12px;padding:7px 10px;flex-shrink:0}
+.filter-bar select{width:auto;font-size:16px;padding:7px 10px;flex-shrink:0}
 /* ── CAPITAL GAUGE ───────────────────────────────────── */
 .gauge-wrap{position:relative;height:10px;background:var(--bg3);border-radius:5px;overflow:hidden;margin:8px 0}
 .gauge-fill{height:100%;border-radius:5px;transition:width .4s ease}
@@ -214,6 +224,13 @@ input:not(:placeholder-shown){color:var(--text)}
     </div>
     <div class="header-badge" id="hdr-badge"></div>
   </div>
+  <div class="header-pnl" id="hdr-pnl" style="display:none">
+    <div class="header-pnl-main" id="hdr-pnl-main"></div>
+    <div class="header-pnl-meta">
+      <span class="header-pnl-net" id="hdr-pnl-net"></span>
+      <span class="header-pnl-fees" id="hdr-pnl-fees"></span>
+    </div>
+  </div>
 </div>
 
 <div id="toast" class="toast"></div>
@@ -222,8 +239,12 @@ input:not(:placeholder-shown){color:var(--text)}
 <div id="dashboard" class="panel active">
   <div class="grid-2" id="sum-cards"></div>
   <div class="card" id="capital-card">
-    <div class="card-title">Capital &amp; margin</div>
+    <div class="card-title">Capital</div>
     <div id="capital-body"></div>
+  </div>
+  <div class="card">
+    <div class="card-title">Open positions</div>
+    <div id="dash-open"></div>
   </div>
   <div class="card">
     <div class="card-title">Cumulative P&amp;L</div>
@@ -233,10 +254,6 @@ input:not(:placeholder-shown){color:var(--text)}
     <div class="card-title">Outcome breakdown</div>
     <div class="legend" id="leg-outcome"></div>
     <div class="chart-wrap" style="height:140px"><canvas id="c-outcome" role="img" aria-label="Outcome breakdown"></canvas></div>
-  </div>
-  <div class="card">
-    <div class="card-title">Open positions</div>
-    <div id="dash-open"></div>
   </div>
 </div>
 
@@ -547,60 +564,65 @@ function totalCapitalUSD() {
 
 function renderCapitalCard() {
   const open = state.trades.filter(t=>t.status==='open');
-  const cspOpen = open.filter(t=>t.type==='CSP'||t.type==='Diagonal');
-  const ccOpen = open.filter(t=>t.type==='CC');
-  const mPct = (state.settings.marginPct||20)/100;
+  const cspOpen = open.filter(t=>['CSP','Diagonal','Bull Put'].includes(t.type));
+  const ccOpen  = open.filter(t=>['CC','PMCC'].includes(t.type));
   const totalCap = totalCapitalUSD();
 
   const cspNotional = cspOpen.reduce((s,t)=>s+t.strike*t.contracts*100,0);
-  const cspMargin = cspNotional*mPct;
-  const ccNotional = ccOpen.reduce((s,t)=>s+t.strike*t.contracts*100,0);
-  const premiumCollected = open.reduce((s,t)=>s+t.totalCredit,0);
+  const ccNotional  = ccOpen.reduce((s,t)=>s+t.strike*t.contracts*100,0);
+  const totalNotional = cspNotional + ccNotional;
+  const cashReserve   = totalCap>0 ? Math.max(0, totalCap-totalNotional) : null;
+  const nPct = totalCap>0 ? Math.min(100,(totalNotional/totalCap)*100) : 0;
+  const nCol = nPct>80?'var(--neg)':nPct>60?'var(--warn)':'var(--blue)';
 
-  // Two idle figures
-  const totalNotionalExposure = cspNotional + ccNotional;
-  const totalMarginRequired = cspMargin + ccNotional;
-  const idleWorstCase = totalCap>0?Math.max(0,totalCap-totalNotionalExposure):null;
-  const idleBuyingPower = totalCap>0?Math.max(0,totalCap-totalMarginRequired):null;
+  const enabledCaps = state.settings.capital.filter(c=>c.enabled&&c.amount>0);
 
-  // Two gauges
-  const notionalUtilPct = totalCap>0?Math.min(100,(totalNotionalExposure/totalCap)*100):0;
-  const marginUtilPct = totalCap>0?Math.min(100,(totalMarginRequired/totalCap)*100):0;
-  const notionalColor = notionalUtilPct>80?'var(--neg)':notionalUtilPct>60?'var(--warn)':'var(--blue)';
-  const marginColor = marginUtilPct>80?'var(--neg)':marginUtilPct>60?'var(--warn)':'var(--pos)';
+  document.getElementById('capital-body').innerHTML = enabledCaps.length===0
+    ? `<div style="text-align:center;padding:12px 0;font-size:13px;color:var(--text2)">Add capital in Settings →</div>`
+    : `
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      ${enabledCaps.map(c=>`
+      <div style="flex:1;background:var(--bg3);border-radius:10px;padding:10px 12px">
+        <div style="font-size:10px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">${c.label}</div>
+        <div style="font-size:17px;font-weight:700">${c.currency==='USD'?'$':'S$'}${c.amount.toLocaleString('en-US',{maximumFractionDigits:0})}</div>
+        <div style="font-size:10px;color:var(--text3);margin-top:2px">${c.currency}</div>
+      </div>`).join('')}
+      ${totalCap>0&&enabledCaps.length>1?`
+      <div style="flex:1;background:var(--bg3);border-radius:10px;padding:10px 12px">
+        <div style="font-size:10px;color:var(--text2);font-weight:600;text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Total (USD)</div>
+        <div style="font-size:17px;font-weight:700">$${totalCap.toLocaleString('en-US',{maximumFractionDigits:0})}</div>
+        <div style="font-size:10px;color:var(--text3);margin-top:2px">converted</div>
+      </div>`:''}
+    </div>
 
-  const capLines = state.settings.capital.filter(c=>c.enabled&&c.amount>0)
-    .map(c=>`<div class="capital-row"><span class="capital-label">${c.label} <span class="cur-tag">${c.currency}</span></span><span class="capital-val">${c.currency==='USD'?'$':'S$'}${c.amount.toLocaleString('en-US',{minimumFractionDigits:0,maximumFractionDigits:0})}</span></div>`).join('');
-
-  document.getElementById('capital-body').innerHTML = `
-    ${capLines||'<div class="empty" style="padding:8px 0;font-size:12px">Add capital in Settings</div>'}
     ${totalCap>0?`
-    <div class="section-sep"></div>
-    <div class="capital-row"><span class="capital-label">CSP notional exposure <span style="font-size:10px;color:var(--text3)">(full assignment risk)</span></span><span class="capital-val">${fmt(cspNotional)}</span></div>
-    <div class="capital-row"><span class="capital-label">CSP margin required <span style="font-size:10px;color:var(--text3)">(@ ${state.settings.marginPct||20}%)</span></span><span class="capital-val warn">${fmt(cspMargin)}</span></div>
-    <div class="capital-row"><span class="capital-label">CC notional (shares held)</span><span class="capital-val">${fmt(ccNotional)}</span></div>
-    <div class="capital-row"><span class="capital-label">Premium collected (open)</span><span class="capital-val pos">${fmt(premiumCollected)}</span></div>
-    <div class="section-sep"></div>
-    <div style="margin-bottom:10px">
-      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">
-        <span style="font-size:12px;color:var(--text2)">Notional exposure <span style="font-size:10px;color:var(--text3)">(worst case)</span></span>
-        <span style="font-size:13px;font-weight:700;color:var(--blue)">${fmt(totalNotionalExposure)}</span>
+    <div style="background:var(--bg3);border-radius:10px;padding:10px 12px;margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:.5px solid var(--border)">
+        <span style="font-size:12px;color:var(--text2)">CSP notional</span>
+        <span style="font-size:13px;font-weight:600">${fmt(cspNotional)}</span>
       </div>
-      <div class="gauge-wrap"><div class="gauge-fill" style="width:${notionalUtilPct.toFixed(1)}%;background:${notionalColor}"></div></div>
-      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text2)">
-        <span>Idle after notional</span>
-        <span style="font-weight:700;color:${idleWorstCase>0?'var(--pos)':'var(--neg)'}">${fmt(idleWorstCase)} <span style="color:${notionalColor}">(${notionalUtilPct.toFixed(1)}% deployed)</span></span>
+      ${ccNotional>0?`
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:.5px solid var(--border)">
+        <span style="font-size:12px;color:var(--text2)">CC notional</span>
+        <span style="font-size:13px;font-weight:600">${fmt(ccNotional)}</span>
+      </div>`:''}
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0">
+        <span style="font-size:12px;color:var(--text2)">Total notional</span>
+        <span style="font-size:13px;font-weight:700;color:var(--blue)">${fmt(totalNotional)}</span>
       </div>
     </div>
+
     <div>
-      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">
-        <span style="font-size:12px;color:var(--text2)">Margin required <span style="font-size:10px;color:var(--text3)">(buying power)</span></span>
-        <span style="font-size:13px;font-weight:700;color:var(--warn)">${fmt(totalMarginRequired)}</span>
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px">
+        <span style="font-size:12px;color:var(--text2);font-weight:600">Capital deployed</span>
+        <span style="font-size:12px;font-weight:700;color:${nCol}">${nPct.toFixed(0)}%</span>
       </div>
-      <div class="gauge-wrap"><div class="gauge-fill" style="width:${marginUtilPct.toFixed(1)}%;background:${marginColor}"></div></div>
-      <div style="display:flex;justify-content:space-between;font-size:10px;color:var(--text2)">
-        <span>Idle after margin</span>
-        <span style="font-weight:700;color:${idleBuyingPower>0?'var(--pos)':'var(--neg)'}">${fmt(idleBuyingPower)} <span style="color:${marginColor}">(${marginUtilPct.toFixed(1)}% deployed)</span></span>
+      <div style="height:6px;background:var(--bg3);border-radius:3px;overflow:hidden;margin-bottom:6px">
+        <div style="height:100%;width:${nPct.toFixed(1)}%;background:${nCol};border-radius:3px;transition:width .4s"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:12px">
+        <span style="color:var(--text2)">Cash reserve if assigned</span>
+        <span style="font-weight:700;color:${(cashReserve||0)>0?'var(--pos)':'var(--neg)'}">${fmt(cashReserve)}</span>
       </div>
     </div>
     `:''}
@@ -658,40 +680,82 @@ function renderDashboard() {
   const open=state.trades.filter(t=>t.status==='open');
   const closed=state.trades.filter(t=>t.status==='closed');
   const opts=closed.filter(t=>t.type!=='Stock Sale');
-  const showNet = state.settings.showNet !== false;
-  const totalPnl=closed.reduce((s,t)=>s+(showNet?(t.pnlNet!=null?t.pnlNet:netPnl(t)||0):(t.pnl||0)),0);
+  const showNet = state.settings.showNet === true; // gross is default
+  const grossPnl=closed.reduce((s,t)=>s+(t.pnl||0),0);
   const totalFees=closed.reduce((s,t)=>s+(t.feesTotal||0),0);
+  const netPnlTotal=closed.reduce((s,t)=>s+(t.pnlNet!=null?t.pnlNet:netPnl(t)||0),0);
+  const displayPnl = showNet ? netPnlTotal : grossPnl;
   const wins=opts.filter(t=>(t.pnl||0)>0).length;
   const wr=opts.length?Math.round(wins/opts.length*100):0;
   const capRisk=opts.reduce((s,t)=>s+t.strike*t.contracts*100,0);
-  const capEffTot=capRisk>0?(opts.reduce((s,t)=>s+(t.pnl||0),0)/capRisk*100).toFixed(2):0;
+  const capEffTot=capRisk>0?(grossPnl/capRisk*100).toFixed(2):0;
   const openCred=open.reduce((s,t)=>s+t.totalCredit,0);
 
+  // Header
   document.getElementById('hdr-sub').textContent=opts.length+' trades · '+open.length+' open';
-  document.getElementById('hdr-badge').textContent=(totalPnl>=0?'+':'')+fmt(totalPnl,0);
+  document.getElementById('hdr-badge').style.display='none';
+  const hdrPnl=document.getElementById('hdr-pnl');
+  hdrPnl.style.display='flex';
+  document.getElementById('hdr-pnl-main').textContent=(grossPnl>=0?'+':'')+fmt(grossPnl,2);
+  document.getElementById('hdr-pnl-main').className='header-pnl-main '+(grossPnl>=0?'pos':'neg');
+  document.getElementById('hdr-pnl-net').textContent='net '+(netPnlTotal>=0?'+':'')+fmt(netPnlTotal,2);
+  document.getElementById('hdr-pnl-fees').textContent='-'+fmt(totalFees,2)+' fees';
 
+  // Metric cards — title reflects gross/net setting
+  const pnlLabel = showNet ? 'Total Net P&amp;L' : 'Total Gross P&amp;L';
   document.getElementById('sum-cards').innerHTML=`
-    <div class="metric"><div class="metric-label">Total P&amp;L</div><div class="metric-value ${totalPnl>=0?'pos':'neg'}">${fmtSgn(totalPnl,2)}</div><div class="metric-sub">${closed.length} closed trades</div></div>
-    <div class="metric"><div class="metric-label">Win rate</div><div class="metric-value">${wr}%</div><div class="metric-sub">${wins}W / ${opts.length-wins}L of ${opts.length}</div></div>
-    <div class="metric"><div class="metric-label">Open premium</div><div class="metric-value pos">${fmt(openCred,0)}</div><div class="metric-sub">${open.length} positions</div></div>
-    <div class="metric"><div class="metric-label">Cap efficiency</div><div class="metric-value pos">${capEffTot}%</div><div class="metric-sub">P&amp;L ÷ capital at risk</div></div>
+    <div class="metric">
+      <div class="metric-label">${pnlLabel}</div>
+      <div class="metric-value ${displayPnl>=0?'pos':'neg'}">${fmtSgn(displayPnl,2)}</div>
+      <div class="metric-sub">${closed.length} closed trades</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">Win rate</div>
+      <div class="metric-value">${wr}%</div>
+      <div class="metric-sub">${wins}W / ${opts.length-wins}L of ${opts.length}</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">Open premium</div>
+      <div class="metric-value pos">${fmt(openCred,0)}</div>
+      <div class="metric-sub">${open.length} positions</div>
+    </div>
+    <div class="metric">
+      <div class="metric-label">Cap efficiency</div>
+      <div class="metric-value pos">${capEffTot}%</div>
+      <div class="metric-sub">P&amp;L ÷ capital at risk</div>
+    </div>
   `;
-  // Net/Gross toggle pill on dashboard
-  const existingToggle = document.getElementById('pnl-mode-toggle');
-  if (!existingToggle) {
-    const toggleDiv = document.createElement('div');
-    toggleDiv.id = 'pnl-mode-toggle';
-    toggleDiv.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;padding:10px 14px;background:var(--card);border-radius:var(--radius);border:0.5px solid var(--border)';
-    toggleDiv.innerHTML = '<span style="font-size:12px;color:var(--text2)">Showing <strong style="color:var(--text)">' + (state.settings.showNet?'Net':'Gross') + '</strong> P&L · Total fees paid: <strong style="color:var(--neg)">$' + totalFees.toFixed(2) + '</strong></span><button onclick="toggleNetGross()" style="font-size:11px;font-weight:700;padding:5px 12px;border-radius:8px;border:0.5px solid var(--border2);background:var(--bg3);color:var(--blue);cursor:pointer">Switch to ' + (state.settings.showNet?'Gross':'Net') + '</button>';
-    const sumCards = document.getElementById('sum-cards');
-    sumCards.parentNode.insertBefore(toggleDiv, sumCards);
-  } else {
-    existingToggle.querySelector('span').innerHTML = 'Showing <strong style="color:var(--text)">' + (state.settings.showNet?'Net':'Gross') + '</strong> P&L · Total fees: <strong style="color:var(--neg)">$' + totalFees.toFixed(2) + '</strong>';
-    existingToggle.querySelector('button').textContent = 'Switch to ' + (state.settings.showNet?'Gross':'Net');
-  }
 
   renderCapitalCard();
 
+  // Open positions with swipe-to-delete
+  document.getElementById('dash-open').innerHTML = open.length
+    ? open.map(t=>{
+        const dl=t.expiry?calcDTE(t.expiry):'-';
+        const warn=typeof dl==='number'&&dl<=7;
+        return `<div class="swipe-wrap" id="sw-${t.id}">
+          <button class="swipe-delete-btn" id="swdel-${t.id}" onclick="delTrade(${t.id})">Delete</button>
+          <div class="swipe-content" id="swc-${t.id}"
+            ontouchstart="swipeStart(event,${t.id})"
+            ontouchmove="swipeMove(event,${t.id})"
+            ontouchend="swipeEnd(event,${t.id})">
+            <div style="flex:1">
+              <div class="trade-ticker"><span class="badge ${badgeClass(t.type)}">${t.type}</span>${t.ticker}</div>
+              <div class="trade-meta">Strike $${t.strike} · ${typeof dl==='number'?`<span class="${warn?'dte-warn':''}">${dl}d left</span>`:'-'} · ${t.contracts} contract${t.contracts>1?'s':''}</div>
+              ${t.notes?`<div class="trade-note">${t.notes}</div>`:''}
+            </div>
+            <div style="text-align:right;flex-shrink:0;padding-left:10px">
+              <div class="trade-pnl pos">+${fmt(t.totalCredit)}</div>
+              <div style="margin-top:4px;display:flex;gap:5px;justify-content:flex-end">
+                <button class="btn-sm" onclick="showClose(${t.id})">Close</button>
+              </div>
+            </div>
+          </div>
+        </div>`;
+      }).join('')
+    : '<div class="empty">No open positions</div>';
+
+  // Charts
   const sc=[...closed].filter(t=>t.closedDate).sort((a,b)=>new Date(a.closedDate)-new Date(b.closedDate));
   let run=0;
   destroyChart('pnl');
@@ -702,7 +766,6 @@ function renderDashboard() {
       options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>'$'+ctx.parsed.y.toFixed(2)}}},scales:{x:{ticks:{color:C.text,font:{size:9},maxTicksLimit:8},grid:{color:C.grid}},y:{ticks:{color:C.text,font:{size:10},callback:v=>'$'+v},grid:{color:C.grid}}}}
     });
   }
-
   const outcomes={};
   closed.forEach(t=>{if(t.outcome)outcomes[t.outcome]=(outcomes[t.outcome]||0)+1;});
   const outKeys=Object.keys(outcomes).filter(k=>outcomes[k]>0);
@@ -716,20 +779,6 @@ function renderDashboard() {
       options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{callbacks:{label:ctx=>ctx.label+': '+ctx.parsed}}}}
     });
   }
-
-  document.getElementById('dash-open').innerHTML=open.length?open.map(t=>{
-    const dl=t.expiry?calcDTE(t.expiry):'-';
-    const warn=typeof dl==='number'&&dl<=7;
-    return `<div class="trade-row">
-      <div style="flex:1"><div class="trade-ticker"><span class="badge ${badgeClass(t.type)}">${t.type}</span>${t.ticker}</div>
-      <div class="trade-meta">Strike $${t.strike} · ${typeof dl==='number'?`<span class="${warn?'dte-warn':''}">${dl}d left</span>`:'-'}</div>
-      ${t.notes?`<div class="trade-note">${t.notes}</div>`:''}
-      </div>
-      <div style="text-align:right"><div class="trade-pnl pos">+$${t.totalCredit}</div><div style="margin-top:4px;display:flex;gap:5px;justify-content:flex-end">
-        <button class="btn-sm" onclick="showClose(${t.id})">Close</button>
-        <button class="btn-sm btn-del" onclick="delTrade(${t.id})">Del</button>
-      </div></div></div>`;
-  }).join(''):'<div class="empty">No open positions</div>';
 }
 
 // ═══════════════════ ANALYTICS ═══════════════════
@@ -926,6 +975,43 @@ function clearForm() {
 }
 
 // ═══════════════════ CLOSE MODAL ═══════════════════
+// ═══════════════════ SWIPE TO DELETE ═══════════════════
+const _swipe = {};
+function swipeStart(e, id) {
+  _swipe[id] = { x: e.touches[0].clientX, open: false };
+}
+function swipeMove(e, id) {
+  if (!_swipe[id]) return;
+  const dx = e.touches[0].clientX - _swipe[id].x;
+  const content = document.getElementById('swc-'+id);
+  const delBtn  = document.getElementById('swdel-'+id);
+  if (!content || !delBtn) return;
+  if (dx < 0) {
+    const shift = Math.max(-72, dx);
+    content.style.transform = `translateX(${shift}px)`;
+    delBtn.style.transform  = `translateX(${100 + (shift/72)*100}%)`;
+  } else if (_swipe[id].open) {
+    content.style.transform = 'translateX(0)';
+    delBtn.style.transform  = 'translateX(100%)';
+  }
+}
+function swipeEnd(e, id) {
+  if (!_swipe[id]) return;
+  const dx = e.changedTouches[0].clientX - _swipe[id].x;
+  const content = document.getElementById('swc-'+id);
+  const delBtn  = document.getElementById('swdel-'+id);
+  if (!content || !delBtn) return;
+  if (dx < -40) {
+    content.style.transform = 'translateX(-72px)';
+    delBtn.style.transform  = 'translateX(0)';
+    _swipe[id].open = true;
+  } else {
+    content.style.transform = 'translateX(0)';
+    delBtn.style.transform  = 'translateX(100%)';
+    _swipe[id].open = false;
+  }
+}
+
 function showClose(id) {
   document.getElementById('cm-id').value=id;
   document.getElementById('cm-date').value=new Date().toISOString().slice(0,10);
@@ -968,20 +1054,20 @@ function renderHistory() {
   const tickers=[...new Set(state.trades.map(t=>t.ticker))];
   const fb=document.getElementById('hist-filters');
   fb.innerHTML=`
-    <select onchange="histFilters.ticker=this.value;renderHistory()" style="width:auto;font-size:12px;padding:7px 10px">
+    <select onchange="histFilters.ticker=this.value;renderHistory()" style="width:auto;font-size:16px;padding:7px 10px">
       <option value="">All tickers</option>
       ${tickers.map(tk=>`<option value="${tk}" ${histFilters.ticker===tk?'selected':''}>${tk}</option>`).join('')}
     </select>
-    <select onchange="histFilters.type=this.value;renderHistory()" style="width:auto;font-size:12px;padding:7px 10px">
+    <select onchange="histFilters.type=this.value;renderHistory()" style="width:auto;font-size:16px;padding:7px 10px">
       <option value="">All types</option>
       ${['CSP','CC','PMCC','Diagonal','Bull Put','Bear Call','Stock Sale'].map(t=>`<option value="${t}" ${histFilters.type===t?'selected':''}>${t}</option>`).join('')}
     </select>
-    <select onchange="histFilters.outcome=this.value;renderHistory()" style="width:auto;font-size:12px;padding:7px 10px">
+    <select onchange="histFilters.outcome=this.value;renderHistory()" style="width:auto;font-size:16px;padding:7px 10px">
       <option value="">All outcomes</option>
       ${['Open','Expired','Closed','Assigned','Sold'].map(o=>`<option value="${o}" ${histFilters.outcome===o?'selected':''}>${o}</option>`).join('')}
     </select>
-    <input type="date" placeholder="From" value="${histFilters.dateFrom}" onchange="histFilters.dateFrom=this.value;renderHistory()" style="width:130px;font-size:12px;padding:7px 10px">
-    <input type="date" placeholder="To" value="${histFilters.dateTo}" onchange="histFilters.dateTo=this.value;renderHistory()" style="width:130px;font-size:12px;padding:7px 10px">
+    <input type="date" placeholder="From" value="${histFilters.dateFrom}" onchange="histFilters.dateFrom=this.value;renderHistory()" style="width:130px;font-size:16px;padding:7px 10px">
+    <input type="date" placeholder="To" value="${histFilters.dateTo}" onchange="histFilters.dateTo=this.value;renderHistory()" style="width:130px;font-size:16px;padding:7px 10px">
   `;
 
   let trades=[...state.trades];
@@ -1388,6 +1474,46 @@ function recomputeAllFees() {
     }
   });
   save();
+}
+
+function toggleLogField(key, on) {
+  const f = state.settings.logFields;
+  if (on && !f.includes(key)) f.push(key);
+  else if (!on) state.settings.logFields = f.filter(k => k !== key);
+  save();
+}
+
+function toggleHistCol(i, on) {
+  state.settings.histCols[i].on = on;
+  save();
+}
+
+let _dragIdx = null;
+function dragStart(e) { _dragIdx = parseInt(e.currentTarget.dataset.i); }
+function dragOver(e)  { e.preventDefault(); }
+function dropCol(e) {
+  e.preventDefault();
+  const to = parseInt(e.currentTarget.dataset.i);
+  if (_dragIdx === null || _dragIdx === to) return;
+  const cols = state.settings.histCols;
+  const moved = cols.splice(_dragIdx, 1)[0];
+  cols.splice(to, 0, moved);
+  _dragIdx = null;
+  save();
+  renderSettingsSub('histcols', document.getElementById('s-sub-view'));
+}
+
+function confirmClearAll() {
+  if (!confirm('Delete ALL trades and reset settings? This cannot be undone.')) return;
+  localStorage.removeItem(SK);
+  state.trades = [];
+  state.nextId = 1;
+  save();
+  toast('All data cleared', 'warn');
+  renderDashboard();
+  if (document.getElementById('s-sub-view').style.display !== 'none') {
+    renderSettingsSub('data', document.getElementById('s-sub-view'));
+  }
 }
 
 function renderSettings() { renderSettingsMain(); }
